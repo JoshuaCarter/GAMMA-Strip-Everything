@@ -1,0 +1,124 @@
+--[[
+	Dorn's Fieldstrip All Keybind
+
+	MCM keybind that field-strips whatever weapon your cursor is over in an
+	inventory list - your own gear, a corpse or crate you're looting, a trade
+	screen, etc - detaching every addon (scope, silencer, grenade launcher)
+	in one press.
+
+	Hover tracking piggybacks on the same ActorMenu_on_item_focus_receive /
+	_lost callbacks the inventory UI itself fires when the cursor moves over
+	a cell, so it works anywhere those fire - no dependency on which bag/menu
+	mode is active. Detaching reuses ui_inventory.GUI:Action_Detach_Scope /
+	_Silencer / _GL - the exact functions the right-click "Detach ..." menu
+	entries call - so results (items returned, sounds played, UI refresh)
+	are identical to using that menu three times.
+
+	Loads late (zzzz_) so any other mod's ui_inventory/utils_item patches are
+	already in place before we call into them.
+]]
+
+local MOD_ID = "dorn_fieldstrip_all_keybind"
+local DORN_COMMON_VERSION = "dorn_common_105895da" -- managed by sync-dorn-common.sh, do not hand-edit
+
+local DORN
+
+local CONFIG = {
+	key = nil,
+	debug_log = false,
+}
+
+local hovered_obj_id = nil
+
+local function log(msg)
+	if not (DORN and DORN.dbg) then
+		return
+	end
+	if CONFIG.debug_log then
+		DORN.dbg.log(MOD_ID, tostring(msg))
+	end
+end
+
+local function on_option_change()
+	CONFIG.key = DORN.mcm.key(MOD_ID, "main/key")
+	CONFIG.debug_log = DORN.mcm.bool(MOD_ID, "development/debug_log", false)
+end
+
+local function on_item_focus_receive(obj)
+	hovered_obj_id = obj and obj:id() or nil
+end
+
+local function on_item_focus_lost(obj)
+	if obj and hovered_obj_id == obj:id() then
+		hovered_obj_id = nil
+	end
+end
+
+local function get_hovered_weapon()
+	if not hovered_obj_id then
+		return nil
+	end
+	local obj = level.object_by_id(hovered_obj_id)
+	if obj and obj:parent() and IsWeapon(obj) then
+		return obj
+	end
+	return nil
+end
+
+local function field_strip(gui, obj)
+	local stripped = 0
+
+	if utils_item.get_attached_scope(obj) then
+		gui:Action_Detach_Scope(obj)
+		stripped = stripped + 1
+		obj = get_hovered_weapon() or obj
+	end
+
+	if obj and utils_item.get_attached_silencer(obj) then
+		gui:Action_Detach_Silencer(obj)
+		stripped = stripped + 1
+		obj = get_hovered_weapon() or obj
+	end
+
+	if obj and utils_item.get_attached_gl(obj) then
+		gui:Action_Detach_GL(obj)
+		stripped = stripped + 1
+	end
+
+	return stripped
+end
+
+local function try_field_strip()
+	local gui = ui_inventory and ui_inventory.GUI
+	if not (gui and gui.IsShown and gui:IsShown()) then
+		return
+	end
+
+	local obj = get_hovered_weapon()
+	if not obj then
+		return
+	end
+
+	local sec = obj:section()
+	local stripped = field_strip(gui, obj)
+	if stripped > 0 then
+		log(string.format("%s: removed %d addon(s)", sec, stripped))
+	else
+		log(string.format("%s: nothing attached", sec))
+	end
+end
+
+local function on_key_press(key)
+	if CONFIG.key and key == CONFIG.key then
+		try_field_strip()
+	end
+end
+
+function on_game_start()
+	DORN = _G[DORN_COMMON_VERSION].load(MOD_ID)
+
+	RegisterScriptCallback("on_option_change", on_option_change)
+	RegisterScriptCallback("ActorMenu_on_item_focus_receive", on_item_focus_receive)
+	RegisterScriptCallback("ActorMenu_on_item_focus_lost", on_item_focus_lost)
+	RegisterScriptCallback("on_key_press", on_key_press)
+end

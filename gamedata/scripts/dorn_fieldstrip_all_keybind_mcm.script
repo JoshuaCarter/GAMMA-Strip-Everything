@@ -1,0 +1,41 @@
+function on_mcm_load()
+	return {
+		id = "dorn_fieldstrip_all_keybind",
+		text = "ui_mcm_menu_dorn_fieldstrip_all_keybind",
+		gr = {
+			{
+				id = "main",
+				sh = true,
+				text = "ui_mcm_dorn_fieldstrip_all_keybind_main_section",
+				gr = {
+					{
+						id = "main_description",
+						type = "desc",
+						text = "ui_mcm_dorn_fieldstrip_all_keybind_main_description",
+					},
+					{
+						id = "key",
+						type = "key_bind",
+						val = 2,
+						def = -1,
+						hint = "dorn_fieldstrip_all_keybind_key",
+					},
+				},
+			},
+			{
+				id = "development",
+				sh = true,
+				text = "ui_mcm_dorn_fieldstrip_all_keybind_development_section",
+				gr = {
+					{
+						id = "debug_log",
+						type = "check",
+						val = 1,
+						def = false,
+						hint = "dorn_fieldstrip_all_keybind_debug_log",
+					},
+				},
+			},
+		},
+	}
+end
