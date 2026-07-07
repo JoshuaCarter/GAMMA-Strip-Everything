@@ -35,13 +35,6 @@ local CONFIG = {
 
 local hovered_obj_id = nil
 
--- Always-on lifecycle/config confirmation, independent of the debug_log
--- toggle, so "did my keybind register at all" is answerable without
--- needing to flip an MCM option first.
-local function announce(msg)
-	printf("[%s] %s", MOD_ID, tostring(msg))
-end
-
 local function trace(msg)
 	if CONFIG.debug_log and DORN and DORN.dbg then
 		DORN.dbg.log(MOD_ID, tostring(msg))
@@ -51,7 +44,7 @@ end
 local function on_option_change()
 	CONFIG.key = DORN.mcm.key(MOD_ID, "main/key")
 	CONFIG.debug_log = DORN.mcm.bool(MOD_ID, "development/debug_log", false)
-	announce(string.format("config: key=%s debug_log=%s", tostring(CONFIG.key), tostring(CONFIG.debug_log)))
+	trace(string.format("config: key=%s debug_log=%s", tostring(CONFIG.key), tostring(CONFIG.debug_log)))
 end
 
 local function on_item_focus_receive(obj)
@@ -136,7 +129,7 @@ local function try_field_strip()
 	local sec = obj:section()
 	local stripped = field_strip(gui, obj)
 	if stripped > 0 then
-		announce(string.format("%s: removed %d addon(s)", sec, stripped))
+		trace(string.format("%s: removed %d addon(s)", sec, stripped))
 	else
 		trace(string.format("%s: nothing attached", sec))
 	end
@@ -163,5 +156,5 @@ function on_game_start()
 	RegisterScriptCallback("on_before_key_press", on_key_press)
 	RegisterScriptCallback("on_key_press", on_key_press)
 
-	announce("loaded")
+	trace("loaded")
 end
