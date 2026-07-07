@@ -35,8 +35,11 @@ local CONFIG = {
 
 local hovered_obj_id = nil
 
-local function trace(msg)
-	if CONFIG.debug_log and DORN and DORN.dbg then
+local function log(msg)
+	if not (DORN and DORN.dbg) then
+		return
+	end
+	if CONFIG.debug_log then
 		DORN.dbg.log(MOD_ID, tostring(msg))
 	end
 end
@@ -44,19 +47,19 @@ end
 local function on_option_change()
 	CONFIG.key = DORN.mcm.key(MOD_ID, "main/key")
 	CONFIG.debug_log = DORN.mcm.bool(MOD_ID, "development/debug_log", false)
-	trace(string.format("config: key=%s debug_log=%s", tostring(CONFIG.key), tostring(CONFIG.debug_log)))
+	log(string.format("config: key=%s debug_log=%s", tostring(CONFIG.key), tostring(CONFIG.debug_log)))
 end
 
 local function on_item_focus_receive(obj)
 	hovered_obj_id = obj and obj:id() or nil
 	if obj then
-		trace(string.format("hover: %s (id=%s)", obj:section(), tostring(hovered_obj_id)))
+		log(string.format("hover: %s (id=%s)", obj:section(), tostring(hovered_obj_id)))
 	end
 end
 
 local function on_item_focus_lost(obj)
 	if obj and hovered_obj_id == obj:id() then
-		trace(string.format("hover lost: %s", obj:section()))
+		log(string.format("hover lost: %s", obj:section()))
 		hovered_obj_id = nil
 	end
 end
@@ -73,15 +76,15 @@ local function get_hovered_weapon()
 	end
 	local obj = level.object_by_id(hovered_obj_id)
 	if not obj then
-		trace("hovered object no longer resolves (id " .. tostring(hovered_obj_id) .. ")")
+		log("hovered object no longer resolves (id " .. tostring(hovered_obj_id) .. ")")
 		return nil
 	end
 	if not obj:parent() then
-		trace(string.format("%s: no parent, skipping", obj:section()))
+		log(string.format("%s: no parent, skipping", obj:section()))
 		return nil
 	end
 	if not IsWeapon(obj) then
-		trace(string.format("%s: not a weapon, skipping", obj:section()))
+		log(string.format("%s: not a weapon, skipping", obj:section()))
 		return nil
 	end
 	return obj
@@ -91,21 +94,21 @@ local function field_strip(gui, obj)
 	local stripped = 0
 
 	if utils_item.get_attached_scope(obj) then
-		trace(string.format("%s: detaching scope", obj:section()))
+		log(string.format("%s: detaching scope", obj:section()))
 		gui:Action_Detach_Scope(obj)
 		stripped = stripped + 1
 		obj = get_hovered_weapon() or obj
 	end
 
 	if obj and utils_item.get_attached_silencer(obj) then
-		trace(string.format("%s: detaching silencer", obj:section()))
+		log(string.format("%s: detaching silencer", obj:section()))
 		gui:Action_Detach_Silencer(obj)
 		stripped = stripped + 1
 		obj = get_hovered_weapon() or obj
 	end
 
 	if obj and utils_item.get_attached_gl(obj) then
-		trace(string.format("%s: detaching gl", obj:section()))
+		log(string.format("%s: detaching gl", obj:section()))
 		gui:Action_Detach_GL(obj)
 		stripped = stripped + 1
 	end
@@ -116,22 +119,22 @@ end
 local function try_field_strip()
 	local gui = ui_inventory and ui_inventory.GUI
 	if not gui then
-		trace("ui_inventory.GUI not available")
+		log("ui_inventory.GUI not available")
 		return
 	end
 
 	local obj = get_hovered_weapon()
 	if not obj then
-		trace("no weapon hovered")
+		log("no weapon hovered")
 		return
 	end
 
 	local sec = obj:section()
 	local stripped = field_strip(gui, obj)
 	if stripped > 0 then
-		trace(string.format("%s: removed %d addon(s)", sec, stripped))
+		log(string.format("%s: removed %d addon(s)", sec, stripped))
 	else
-		trace(string.format("%s: nothing attached", sec))
+		log(string.format("%s: nothing attached", sec))
 	end
 end
 
@@ -142,7 +145,7 @@ local function on_key_press(key)
 	if key ~= CONFIG.key then
 		return
 	end
-	trace(string.format("key press matched (dik=%s)", tostring(key)))
+	log(string.format("key press matched (dik=%s)", tostring(key)))
 	try_field_strip()
 end
 
@@ -156,5 +159,5 @@ function on_game_start()
 	RegisterScriptCallback("on_before_key_press", on_key_press)
 	RegisterScriptCallback("on_key_press", on_key_press)
 
-	trace("loaded")
+	log("loaded")
 end
