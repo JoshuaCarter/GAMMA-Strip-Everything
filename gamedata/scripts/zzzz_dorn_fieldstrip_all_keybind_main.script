@@ -139,14 +139,10 @@ local function try_field_strip()
 end
 
 local function on_key_press(key)
-	if not CONFIG.key then
-		return
+	log(string.format("key press: dik=%s (%s) configured=%s (%s)", tostring(key), type(key), tostring(CONFIG.key), type(CONFIG.key)))
+	if CONFIG.key and key == CONFIG.key then
+		try_field_strip()
 	end
-	if key ~= CONFIG.key then
-		return
-	end
-	log(string.format("key press matched (dik=%s)", tostring(key)))
-	try_field_strip()
 end
 
 function on_game_start()
