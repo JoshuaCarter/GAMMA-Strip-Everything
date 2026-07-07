@@ -14,10 +14,15 @@
 	entries call - so results (items returned, sounds played, UI refresh)
 	are identical to using that menu three times.
 
-	Registered on both on_key_press and on_before_key_press: some inventory
-	dialogs consume keys before they reach the plain on_key_press callback,
-	so on_before_key_press (fired ahead of UI handling) is the one that
-	actually works while a bag/loot/trade screen has keyboard focus.
+	Key detection: the inventory/loot/trade window (ui_inventory.UIInventory
+	- one class handles all three via self.mode) owns keyboard focus while
+	it's open and never forwards to the global on_key_press/on_before_key_press
+	callback bus, so those don't fire while hovering an item. Instead we wrap
+	UIInventory:OnKeyboard directly (same technique Dorns_Optimal_Tool_Use
+	uses on item_parts functions) - guaranteed to see every keypress the
+	window receives, regardless of mode. The global callbacks are also
+	registered as a harmless fallback in case some other menu variant
+	doesn't route through UIInventory at all.
 
 	Loads late (zzzz_) so any other mod's ui_inventory/utils_item patches are
 	already in place before we call into them.
@@ -34,6 +39,7 @@ local CONFIG = {
 }
 
 local hovered_obj_id = nil
+local orig_on_keyboard = nil
 
 local function log(msg)
 	if not (DORN and DORN.dbg) then
@@ -138,11 +144,34 @@ local function try_field_strip()
 	end
 end
 
-local function on_key_press(key)
-	log(string.format("key press: dik=%s (%s) configured=%s (%s)", tostring(key), type(key), tostring(CONFIG.key), type(CONFIG.key)))
+local function handle_key(key)
+	log(string.format("key seen: dik=%s configured=%s", tostring(key), tostring(CONFIG.key)))
 	if CONFIG.key and key == CONFIG.key then
 		try_field_strip()
 	end
+end
+
+local function on_key_press(key)
+	handle_key(key)
+end
+
+-- Fires for every key the inventory/loot/trade window receives, regardless
+-- of self.mode, since they all share this one UIInventory class/instance.
+local function patched_on_keyboard(self, dik, keyboard_action)
+	if keyboard_action == ui_events.WINDOW_KEY_PRESSED then
+		handle_key(dik)
+	end
+	return orig_on_keyboard(self, dik, keyboard_action)
+end
+
+local function patch_ui_inventory()
+	if not (ui_inventory and ui_inventory.UIInventory and ui_inventory.UIInventory.OnKeyboard) then
+		log("ui_inventory.UIInventory.OnKeyboard not found, keybind will only use the global callback fallback")
+		return
+	end
+	orig_on_keyboard = ui_inventory.UIInventory.OnKeyboard
+	ui_inventory.UIInventory.OnKeyboard = patched_on_keyboard
+	log("patched ui_inventory.UIInventory.OnKeyboard")
 end
 
 function on_game_start()
@@ -154,6 +183,8 @@ function on_game_start()
 	RegisterScriptCallback("ActorMenu_on_before_init_mode", on_before_init_mode)
 	RegisterScriptCallback("on_before_key_press", on_key_press)
 	RegisterScriptCallback("on_key_press", on_key_press)
+
+	patch_ui_inventory()
 
 	log("loaded")
 end
