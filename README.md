@@ -2,6 +2,10 @@
 
 For **S.T.A.L.K.E.R. G.A.M.M.A.** — an MCM keybind that field-strips a weapon in one press.
 
+## Demo
+
+https://github.com/JoshuaCarter/GAMMA-Field-Strip-All-Keybind/raw/main/stripper.mp4
+
 ## What this mod does
 
 Hover your cursor over a weapon (your own inventory, or a corpse/crate you're looting) and press the configured key. It detaches the scope, silencer, and GL, then removes all Weapon Parts Overhaul parts (trigger group, bolt, etc) — same as right-clicking each option by hand, just automatic.
