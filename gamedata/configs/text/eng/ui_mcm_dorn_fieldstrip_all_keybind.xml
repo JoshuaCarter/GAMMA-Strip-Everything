@@ -7,7 +7,7 @@
 		<text>Main</text>
 	</string>
 	<string id="ui_mcm_dorn_fieldstrip_all_keybind_main_description">
-		<text>Hold your cursor over a weapon in any inventory list (yours, a corpse, a crate, a trade screen) and press the key to detach every addon on it - scope, silencer, grenade launcher - in one go. Uses the same detach actions as the right-click menu, so results (items, sounds) are identical. Leave the key unbound to disable.</text>
+		<text>Hold your cursor over a weapon in your inventory or a corpse/crate you're looting, and press the key once. It detaches scope, then silencer, then GL, then field-strips all Weapon Parts Overhaul parts (Field strip -> Remove all) - one step every couple of frames, same actions as right-clicking each entry by hand, just automatic. Leave the key unbound to disable.</text>
 	</string>
 	<string id="ui_mcm_dorn_fieldstrip_all_keybind_key">
 		<text>Field-strip key</text>
@@ -19,6 +19,6 @@
 		<text>Enable debug logging</text>
 	</string>
 	<string id="ui_mcm_dorn_fieldstrip_all_keybind_debug_log_desc">
-		<text>Write field-strip actions (hovered weapon, addons removed) to the game log file.</text>
+		<text>Write field-strip actions (hovered weapon, addons removed, parts removed) to the game log file.</text>
 	</string>
 </string_table>
