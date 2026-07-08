@@ -12,56 +12,17 @@
 	  4. Field strip -> Remove all (all internal weapon parts tracked by
 	     the Weapon Parts Overhaul mod - trigger group, bolt, etc,
 	     excluding the barrel - one call removes everything remaining)
-
-	Only ONE native UI action happens per render frame though, never more -
-	chaining several of these calls back-to-back inside a single
-	synchronous callback (what an earlier version of this mod did) was
-	observed to crash the game. The engine expects one discrete user action
-	per input event with the UI settling in between; firing 2-3 in one call
-	stack doesn't give it that chance. So instead of doing them all inline,
-	one keypress starts a small state machine (burst_active/burst_obj_id)
-	that's driven by patching UIInventory:Update() - called every render
-	frame regardless of game-pause state, same as OnKeyboard - performing
-	exactly one queued step per BURST_STEP_FRAMES frames until nothing's
-	left to strip on that weapon, or the hover moves to a different item
-	(which aborts the rest of the burst).
-
-	Hover detection reads ui_inventory.GUI.hover (bag/idx) directly at the
-	moment the key is pressed, the same live state the UI itself uses to
-	know what cell you're over - no separate tracking to go stale. Addon
-	removal reuses ui_inventory.GUI:Action_Detach_Scope / _Silencer / _GL -
-	the exact functions the right-click "Detach ..." menu entries call. Part
-	removal reuses zzzz_arti_jamming_repairs.act_fieldstrip(id, nil) - the
-	exact function the "Field strip -> Remove all" menu entry calls when
-	invoked with no specific part name - gated by has_parts_fieldstrip so we
-	don't eject a magazine on a weapon with nothing to strip (that function
-	always force-unloads the mag first, matching what right-clicking would
-	do). Best-effort: if the Weapon Parts Overhaul mod isn't installed, or
-	its precondition check errors on a given weapon, step 4 is just skipped.
-
-	Key detection: the inventory/loot window (ui_inventory.UIInventory) owns
-	keyboard focus while open and never forwards to the global
-	on_key_press/on_before_key_press callback bus, so we wrap
-	UIInventory:OnKeyboard directly instead. Both that patch and the
-	UIInventory:Update patch (for the burst) are applied at file-parse time
-	(top level), not inside on_game_start - the same technique
-	Drop_Disassemble_on_press uses for OnKeyboard - so they compose
-	correctly with any other mod patching the same methods regardless of
-	on_game_start call order: each patch captures whatever the method
-	currently is and chains through it, rather than one silently clobbering
-	another.
-
-	Loads late (zzzz_) purely so ui_inventory.script (sorts earlier, "u" <
-	"z") has already defined UIInventory by the time this file parses.
 ]]
 
 local MOD_ID = "dorn_fieldstrip_all_keybind"
-local DORN_COMMON_VERSION = "dorn_common_105895da" -- managed by sync-dorn-common.sh, do not hand-edit
+local DORN_COMMON_VERSION = "dorn_common_f575cc9b" -- managed by sync-dorn-common.sh, do not hand-edit
 
 local DORN
 
 local CONFIG = {
 	key = nil,
+	intercept_disassemble = true,
+	keep_parts_with_weapon = true,
 	debug_log = false,
 }
 
@@ -69,14 +30,30 @@ local CONFIG = {
 -- closes over these same upvalues rather than unrelated globals.
 local patched_on_keyboard = false
 local patched_on_update = false
+local patched_func_disassembly = false
+local patched_sort_by_kind_guard = false
+local patched_wpo_parts_inventory = false
+
+-- Set while zzzz_arti_jamming_repairs.act_fieldstrip runs so remove_part
+-- knows which weapon is being stripped.
+local strip_weapon_id = nil
 
 -- Burst state: one keypress arms this, then patched Update() ticks it down,
 -- one removal step per BURST_STEP_FRAMES frames, until try_field_strip_step
--- reports nothing left or the hovered item changes.
+-- reports nothing left or the weapon can't be re-found (see
+-- resolve_burst_target for why both the id and the bag/idx are tracked).
 local BURST_STEP_FRAMES = 2
+local RECONCILE_MAX_FRAMES = 30
 local burst_active = false
 local burst_obj_id = nil
+local burst_bag = nil
+local burst_idx = nil
 local burst_frames_left = 0
+local burst_waiting_reconcile = false
+local burst_reconcile_owner_id = nil
+local burst_reconcile_before_ids = nil
+local burst_reconcile_frames_left = 0
+local burst_pending_detach_kind = nil
 
 local function log(msg)
 	if not (DORN and DORN.dbg) then
@@ -93,10 +70,15 @@ end
 -- to actually show up once debug logging is on.
 local function on_option_change()
 	CONFIG.key = DORN.mcm.key(MOD_ID, "main/key")
+	CONFIG.intercept_disassemble = DORN.mcm.bool(MOD_ID, "main/intercept_disassemble", true)
+	CONFIG.keep_parts_with_weapon = DORN.mcm.bool(MOD_ID, "main/keep_parts_with_weapon", true)
 	CONFIG.debug_log = DORN.mcm.bool(MOD_ID, "development/debug_log", false)
 	log(string.format(
-		"on_option_change: key=%s debug_log=%s onkeyboard_patched=%s onupdate_patched=%s",
-		tostring(CONFIG.key), tostring(CONFIG.debug_log), tostring(patched_on_keyboard), tostring(patched_on_update)
+		"on_option_change: key=%s intercept_disassemble=%s keep_parts_with_weapon=%s debug_log=%s onkeyboard_patched=%s onupdate_patched=%s func_disassembly_patched=%s sort_guard_patched=%s wpo_parts_inventory_patched=%s",
+		tostring(CONFIG.key), tostring(CONFIG.intercept_disassemble), tostring(CONFIG.keep_parts_with_weapon),
+		tostring(CONFIG.debug_log),
+		tostring(patched_on_keyboard), tostring(patched_on_update), tostring(patched_func_disassembly),
+		tostring(patched_sort_by_kind_guard), tostring(patched_wpo_parts_inventory)
 	))
 end
 
@@ -123,27 +105,27 @@ local function get_hovered_weapon()
 	local cc = gui.CC and gui.CC[bag]
 	if not cc then
 		log(string.format("get_hovered_weapon: no CC for bag=%s", tostring(bag)))
-		return nil, gui
+		return nil, gui, bag, idx
 	end
 
 	local obj = cc:GetObj(idx)
 	if not obj then
 		log(string.format("get_hovered_weapon: GetObj(%s) in bag=%s returned nothing", tostring(idx), tostring(bag)))
-		return nil, gui
+		return nil, gui, bag, idx
 	end
 
 	log(string.format("get_hovered_weapon: hovering %s (id=%s)", obj:section(), tostring(obj:id())))
 
 	if not obj:parent() then
 		log(string.format("%s: no parent, skipping", obj:section()))
-		return nil, gui, bag
+		return nil, gui, bag, idx
 	end
 	if not IsWeapon(obj) then
 		log(string.format("%s: not a weapon, skipping", obj:section()))
-		return nil, gui, bag
+		return nil, gui, bag, idx
 	end
 
-	return obj, gui, bag
+	return obj, gui, bag, idx
 end
 
 -- Mimics right-click -> Field strip -> Remove all, via the Weapon Parts
@@ -174,41 +156,398 @@ local function field_strip_parts(obj, bag, mode)
 	return true
 end
 
+-- has_parts_fieldstrip only cares whether the item's current bag is one of
+-- actor_equ/actor_belt/actor_bag/npc_bag (all treated identically) vs a
+-- trade window (excluded) - so an object-derived guess is just as good as
+-- the UI's own bag label for that check, and doesn't require knowing which
+-- exact sub-container slot the item is displayed in.
+local function bag_for(obj)
+	local parent = obj:parent()
+	if not parent then
+		return nil
+	end
+	if db.actor and parent:id() == db.actor:id() then
+		return "actor_bag"
+	end
+	return "npc_bag"
+end
+
+local function weapon_count(weapons)
+	local count = 0
+	for _ in pairs(weapons) do
+		count = count + 1
+	end
+	return count
+end
+
+local function snapshot_owner_weapons(owner)
+	local weapons = {}
+	if not (owner and owner.iterate_inventory) then
+		return weapons
+	end
+	local ok = pcall(function()
+		owner:iterate_inventory(function(_, item)
+			if IsWeapon(item) then
+				weapons[item:id()] = item:section()
+			end
+		end)
+	end)
+	if not ok then
+		log("snapshot_owner_weapons: iterate_inventory errored")
+		return {}
+	end
+	return weapons
+end
+
+local function format_weapon_list(weapons)
+	local entries = {}
+	for id, section in pairs(weapons) do
+		entries[#entries + 1] = string.format("%s(id=%s)", tostring(section), tostring(id))
+	end
+	table.sort(entries)
+	if #entries == 0 then
+		return "(none)"
+	end
+	return table.concat(entries, ", ")
+end
+
+local function owner_label(owner)
+	if not owner then
+		return "nil"
+	end
+	local name = owner.name and owner:name()
+	if name and name ~= "" then
+		return string.format("%s id=%s", name, tostring(owner:id()))
+	end
+	return string.format("id=%s", tostring(owner:id()))
+end
+
+local function log_weapon_inventory_state(owner, weapons, label)
+	log(string.format(
+		"inv %s: owner=%s weapon_count=%s [%s]",
+		label,
+		owner_label(owner),
+		tostring(weapon_count(weapons)),
+		format_weapon_list(weapons)
+	))
+end
+
+local function log_weapon_inventory_diff(before, after, context)
+	local added, removed, kept = {}, {}, {}
+	for id, section in pairs(after) do
+		if not before[id] then
+			added[#added + 1] = string.format("%s(id=%s)", tostring(section), tostring(id))
+		else
+			kept[#kept + 1] = string.format("%s(id=%s)", tostring(section), tostring(id))
+		end
+	end
+	for id, section in pairs(before) do
+		if not after[id] then
+			removed[#removed + 1] = string.format("%s(id=%s)", tostring(section), tostring(id))
+		end
+	end
+	table.sort(added)
+	table.sort(removed)
+	table.sort(kept)
+	log(string.format(
+		"inv diff %s: before_count=%s after_count=%s added=[%s] removed=[%s] kept=[%s]",
+		context,
+		tostring(weapon_count(before)),
+		tostring(weapon_count(after)),
+		#added > 0 and table.concat(added, ", ") or "(none)",
+		#removed > 0 and table.concat(removed, ", ") or "(none)",
+		#kept > 0 and table.concat(kept, ", ") or "(none)"
+	))
+end
+
+-- Re-finds the weapon a burst is tracking by id only (see file header -
+-- hover slot is intentionally not used mid-burst). Returns obj, bag or nil
+-- if the weapon can't be found yet / anymore.
+local function resolve_burst_target()
+	if burst_obj_id then
+		local obj = get_object_by_id(burst_obj_id)
+		if obj and obj:parent() and IsWeapon(obj) then
+			log(string.format(
+				"burst step: resolved target %s id=%s owner=%s",
+				obj:section(), tostring(obj:id()), owner_label(obj:parent())
+			))
+			return obj, bag_for(obj)
+		end
+		log(string.format("burst step: weapon id=%s not found via get_object_by_id", tostring(burst_obj_id)))
+		if burst_reconcile_owner_id and burst_reconcile_before_ids then
+			local owner = get_object_by_id(burst_reconcile_owner_id)
+			if owner and try_adopt_new_weapon_id(owner, burst_reconcile_before_ids, burst_obj_id, "resolve-recovery", burst_pending_detach_kind) then
+				obj = get_object_by_id(burst_obj_id)
+				if obj and obj:parent() and IsWeapon(obj) then
+					log(string.format(
+						"burst step: recovered target %s id=%s owner=%s",
+						obj:section(), tostring(obj:id()), owner_label(obj:parent())
+					))
+					return obj, bag_for(obj)
+				end
+			end
+		end
+	end
+
+	if burst_waiting_reconcile then
+		log("burst step: still waiting to reconcile recreated weapon id")
+		return nil
+	end
+
+	log("burst step: weapon lost, stopping burst")
+	return nil
+end
+
+local function attachment_still_present(obj, kind)
+	if not (obj and kind) then
+		return false
+	end
+	if kind == "scope" then
+		return utils_item.get_attached_scope(obj)
+	end
+	if kind == "silencer" then
+		return utils_item.get_attached_silencer(obj)
+	end
+	if kind == "gl" then
+		return utils_item.get_attached_gl(obj)
+	end
+	return false
+end
+
+local function clear_burst_reconcile()
+	burst_waiting_reconcile = false
+	burst_reconcile_owner_id = nil
+	burst_reconcile_before_ids = nil
+	burst_reconcile_frames_left = 0
+	burst_pending_detach_kind = nil
+end
+
+local function try_adopt_new_weapon_id(owner, before_weapons, prev_id, context, pending_detach_kind)
+	log_weapon_inventory_state(owner, before_weapons, context .. " reconcile before")
+	local after_weapons = snapshot_owner_weapons(owner)
+	log_weapon_inventory_state(owner, after_weapons, context .. " reconcile after")
+	log_weapon_inventory_diff(before_weapons, after_weapons, context)
+
+	if prev_id then
+		local still_there = get_object_by_id(prev_id)
+		local in_owner_inventory = after_weapons[prev_id] ~= nil
+
+		-- Only trust attachment checks while the weapon is still in the
+		-- owner's live inventory snapshot. After a section-swap detach the
+		-- old id can linger as a global object briefly even once iterate_
+		-- inventory no longer lists it (see reconcile-tick frame 4+ in logs).
+		if still_there and IsWeapon(still_there) and in_owner_inventory then
+			if pending_detach_kind and attachment_still_present(still_there, pending_detach_kind) then
+				log(string.format(
+					"burst step: detach %s still pending on id=%s (%s)",
+					pending_detach_kind, tostring(prev_id), context
+				))
+				return false
+			end
+			burst_obj_id = prev_id
+			if pending_detach_kind then
+				log(string.format(
+					"burst step: detach %s complete in-place on id=%s (%s)",
+					pending_detach_kind, tostring(prev_id), context
+				))
+			else
+				log(string.format("burst step: weapon id=%s unchanged after step (%s)", tostring(prev_id), context))
+			end
+			return true
+		end
+
+		if pending_detach_kind and not in_owner_inventory then
+			log(string.format(
+				"burst step: prev_id=%s gone from owner inventory, waiting for detach %s replacement (%s)",
+				tostring(prev_id), pending_detach_kind, context
+			))
+		elseif pending_detach_kind then
+			log(string.format(
+				"burst step: prev_id=%s gone globally while waiting for detach %s (%s)",
+				tostring(prev_id), pending_detach_kind, context
+			))
+		elseif still_there and not in_owner_inventory then
+			log(string.format(
+				"burst step: prev_id=%s exists globally but not in owner inventory (%s)",
+				tostring(prev_id), context
+			))
+		end
+	end
+
+	for id, section in pairs(after_weapons) do
+		if not before_weapons[id] then
+			burst_obj_id = id
+			log(string.format(
+				"burst step: weapon recreated, id %s -> %s (%s, new=%s)",
+				tostring(prev_id), tostring(id), context, tostring(section)
+			))
+			return true
+		end
+	end
+
+	log(string.format("burst step: no new weapon id found yet (%s, prev_id=%s)", context, tostring(prev_id)))
+	return false
+end
+
+local function begin_burst_reconcile(owner, before_weapons, prev_id, detach_kind)
+	burst_waiting_reconcile = true
+	burst_reconcile_owner_id = owner:id()
+	burst_reconcile_before_ids = before_weapons
+	burst_reconcile_frames_left = RECONCILE_MAX_FRAMES
+	burst_pending_detach_kind = detach_kind
+	log(string.format(
+		"burst step: reconcile pending after step (prev_id=%s, owner=%s, detach=%s, frames=%s)",
+		tostring(prev_id), owner_label(owner), tostring(detach_kind), tostring(RECONCILE_MAX_FRAMES)
+	))
+	log_weapon_inventory_state(owner, before_weapons, "reconcile armed snapshot")
+end
+
+local function reconcile_burst_after_step(owner, before_weapons, prev_id, detach_kind)
+	if try_adopt_new_weapon_id(owner, before_weapons, prev_id, "post-step", detach_kind) then
+		clear_burst_reconcile()
+		return
+	end
+	begin_burst_reconcile(owner, before_weapons, prev_id, detach_kind)
+end
+
+local function reconcile_burst_tick()
+	if not burst_waiting_reconcile then
+		return
+	end
+
+	local owner = burst_reconcile_owner_id and get_object_by_id(burst_reconcile_owner_id)
+	if owner then
+		local before_weapons = burst_reconcile_before_ids or {}
+		local frame = RECONCILE_MAX_FRAMES - burst_reconcile_frames_left + 1
+		if try_adopt_new_weapon_id(owner, before_weapons, burst_obj_id, string.format("reconcile-tick frame %s", tostring(frame)), burst_pending_detach_kind) then
+			clear_burst_reconcile()
+			return
+		end
+	else
+		log(string.format(
+			"burst step: reconcile tick owner id=%s not found",
+			tostring(burst_reconcile_owner_id)
+		))
+	end
+
+	burst_reconcile_frames_left = burst_reconcile_frames_left - 1
+	if burst_reconcile_frames_left <= 0 then
+		log(string.format(
+			"burst step: reconcile timed out after %s frames (owner_id=%s)",
+			tostring(RECONCILE_MAX_FRAMES), tostring(burst_reconcile_owner_id)
+		))
+		if owner then
+			log_weapon_inventory_state(owner, burst_reconcile_before_ids or {}, "reconcile timeout before")
+			log_weapon_inventory_state(owner, snapshot_owner_weapons(owner), "reconcile timeout after")
+			log_weapon_inventory_diff(
+				burst_reconcile_before_ids or {},
+				snapshot_owner_weapons(owner),
+				"reconcile timeout"
+			)
+		end
+		clear_burst_reconcile()
+	end
+end
+
+local function on_burst_owner_item_take(owner, item)
+	if not (burst_active and burst_waiting_reconcile and item and IsWeapon(item)) then
+		return
+	end
+	local parent = item:parent()
+	if not (parent and burst_reconcile_owner_id and parent:id() == burst_reconcile_owner_id) then
+		return
+	end
+	local before_weapons = burst_reconcile_before_ids or {}
+	if before_weapons[item:id()] then
+		log(string.format(
+			"item_take ignored: %s id=%s already present in before snapshot",
+			item:section(), tostring(item:id())
+		))
+		return
+	end
+
+	log(string.format(
+		"item_take candidate: %s id=%s owner=%s",
+		item:section(), tostring(item:id()), owner_label(owner)
+	))
+	log_weapon_inventory_state(owner, before_weapons, "item_take before")
+	local after_weapons = snapshot_owner_weapons(owner)
+	log_weapon_inventory_state(owner, after_weapons, "item_take after")
+	log_weapon_inventory_diff(before_weapons, after_weapons, "item_take")
+
+	burst_obj_id = item:id()
+	clear_burst_reconcile()
+	log(string.format(
+		"burst step: weapon recreated via item_take, %s id=%s",
+		item:section(), tostring(item:id())
+	))
+end
+
+local function actor_on_item_take_cb(item)
+	on_burst_owner_item_take(db.actor, item)
+end
+
+local function npc_on_item_take_cb(npc, item)
+	on_burst_owner_item_take(npc, item)
+end
+
+local function perform_burst_action(owner, prev_id, before_weapons, action_fn, detach_kind)
+	log_weapon_inventory_state(owner, before_weapons, "step before action")
+	local ok, err = pcall(action_fn)
+	if not ok then
+		log("perform_burst_action: action errored: " .. tostring(err))
+	end
+	reconcile_burst_after_step(owner, before_weapons, prev_id, detach_kind)
+end
+
 -- Does exactly ONE removal step (see file header for why) and returns true
 -- if it did something, so the caller knows there might be more to do next
 -- frame, or false once there's nothing left to strip on this weapon.
 local function try_field_strip_step()
-	local obj, gui, bag = get_hovered_weapon()
-	if not (obj and gui) then
-		log("burst step: no weapon hovered, stopping")
+	local gui = ui_inventory and ui_inventory.GUI
+	if not gui then
+		log("burst step: ui_inventory.GUI missing, stopping")
 		return false
 	end
-	if burst_obj_id and obj:id() ~= burst_obj_id then
-		log(string.format("burst step: hover moved to a different item (id=%s -> id=%s), stopping", tostring(burst_obj_id), tostring(obj:id())))
+
+	local obj, bag = resolve_burst_target()
+	if not obj then
+		if burst_waiting_reconcile then
+			return true
+		end
 		return false
 	end
 
 	local sec = obj:section()
+	local owner = obj:parent()
+	local prev_id = obj:id()
+	local before_weapons = snapshot_owner_weapons(owner)
+	log(string.format(
+		"burst step: acting on %s id=%s owner=%s",
+		sec, tostring(prev_id), owner_label(owner)
+	))
 
 	if utils_item.get_attached_scope(obj) then
 		log(string.format("%s: detaching scope", sec))
-		gui:Action_Detach_Scope(obj)
+		perform_burst_action(owner, prev_id, before_weapons, function() gui:Action_Detach_Scope(obj) end, "scope")
 		return true
 	end
 
 	if utils_item.get_attached_silencer(obj) then
 		log(string.format("%s: detaching silencer", sec))
-		gui:Action_Detach_Silencer(obj)
+		perform_burst_action(owner, prev_id, before_weapons, function() gui:Action_Detach_Silencer(obj) end, "silencer")
 		return true
 	end
 
 	if utils_item.get_attached_gl(obj) then
 		log(string.format("%s: detaching gl", sec))
-		gui:Action_Detach_GL(obj)
+		perform_burst_action(owner, prev_id, before_weapons, function() gui:Action_Detach_GL(obj) end, "gl")
 		return true
 	end
 
-	if field_strip_parts(obj, bag, gui.mode) then
+	local stripped = false
+	perform_burst_action(owner, prev_id, before_weapons, function() stripped = field_strip_parts(obj, bag, gui.mode) end, nil)
+	if stripped then
 		return true
 	end
 
@@ -222,6 +561,14 @@ local function burst_tick()
 	if not burst_active then
 		return
 	end
+
+	if burst_waiting_reconcile then
+		reconcile_burst_tick()
+		if burst_waiting_reconcile then
+			return
+		end
+	end
+
 	if burst_frames_left > 0 then
 		burst_frames_left = burst_frames_left - 1
 		return
@@ -229,37 +576,80 @@ local function burst_tick()
 
 	local continued = try_field_strip_step()
 	if not continued then
+		log(string.format("burst complete/stop: last tracked id=%s", tostring(burst_obj_id)))
 		burst_active = false
 		burst_obj_id = nil
+		burst_bag = nil
+		burst_idx = nil
+		clear_burst_reconcile()
 		return
 	end
 	burst_frames_left = BURST_STEP_FRAMES
 end
 
--- Arms a new burst on the currently hovered weapon. Does nothing (just logs)
--- if a burst is already running - lets the current one finish rather than
--- restarting/overlapping it.
+-- Arms a new burst on obj (whether from the keybind or the disassemble
+-- intercept below). Does nothing (just logs) if a burst is already running -
+-- lets the current one finish rather than restarting/overlapping it.
+local function start_burst(obj, bag, idx)
+	if burst_active then
+		log(string.format("start_burst: burst already running (id=%s), ignoring", tostring(burst_obj_id)))
+		return
+	end
+	log(string.format("%s: arming field-strip burst (id=%s, %s/%s)", obj:section(), tostring(obj:id()), tostring(bag), tostring(idx)))
+	local owner = obj:parent()
+	if owner then
+		log_weapon_inventory_state(owner, snapshot_owner_weapons(owner), "burst start")
+	end
+	burst_active = true
+	burst_obj_id = obj:id()
+	burst_bag = bag
+	burst_idx = idx
+	burst_frames_left = 0 -- first step runs on the very next Update() tick
+end
+
 local function handle_key(dik)
 	log(string.format("key seen: dik=%s configured=%s", tostring(dik), tostring(CONFIG.key)))
 	if not (CONFIG.key and dik == CONFIG.key) then
 		return
 	end
 
-	if burst_active then
-		log("handle_key: burst already running, ignoring extra press")
-		return
-	end
-
-	local obj = get_hovered_weapon()
+	local obj, _, bag, idx = get_hovered_weapon()
 	if not obj then
 		log("no weapon hovered")
 		return
 	end
 
-	log(string.format("%s: arming field-strip burst (id=%s)", obj:section(), tostring(obj:id())))
-	burst_active = true
-	burst_obj_id = obj:id()
-	burst_frames_left = 0 -- first step runs on the very next Update() tick
+	start_burst(obj, bag, idx)
+end
+
+-- Same checks try_field_strip_step performs, without acting on anything -
+-- true only once there's nothing left for a burst to do to this weapon.
+-- bag/mode for the parts check are read from the live hover state (best-
+-- effort - if it doesn't happen to match obj, the parts check is skipped
+-- and only the addon checks below still apply).
+local function weapon_fully_stripped(obj)
+	if utils_item.get_attached_scope(obj) then
+		return false
+	end
+	if utils_item.get_attached_silencer(obj) then
+		return false
+	end
+	if utils_item.get_attached_gl(obj) then
+		return false
+	end
+
+	local wpo = zzzz_arti_jamming_repairs
+	if wpo and wpo.has_parts_fieldstrip then
+		local gui = ui_inventory and ui_inventory.GUI
+		local bag = gui and gui.hover and gui.hover.bag
+		local mode = gui and gui.mode
+		local ok, has_parts = pcall(wpo.has_parts_fieldstrip, obj, bag, mode)
+		if ok and has_parts then
+			return false
+		end
+	end
+
+	return true
 end
 
 -- Patched at parse time so it chains correctly with any other mod wrapping
@@ -300,13 +690,128 @@ if original_on_update then
 	patched_on_update = true
 end
 
+-- Catches disassembly (drag a tool onto the item, or a disassemble keybind)
+-- of a weapon that isn't fully stripped yet and redirects it into the same
+-- burst instead. Gated by CONFIG.intercept_disassemble, checked at call
+-- time so the MCM toggle takes effect immediately without re-patching.
+local original_func_disassembly = item_parts and item_parts.func_disassembly
+
+if original_func_disassembly then
+	function item_parts.func_disassembly(obj, obj_d)
+		if CONFIG.intercept_disassemble and obj and IsWeapon(obj) and not weapon_fully_stripped(obj) then
+			log(string.format("%s: disassemble intercepted, field-stripping instead of disassembling", obj:section()))
+			local gui = ui_inventory and ui_inventory.GUI
+			local bag = gui and gui.hover and gui.hover.bag
+			local idx = gui and gui.hover and gui.hover.idx
+			start_burst(obj, bag, idx)
+			return
+		end
+
+		return original_func_disassembly(obj, obj_d)
+	end
+	patched_func_disassembly = true
+end
+
+-- Best-effort crash guard, see file header. Only touches behavior on the
+-- error path (falls back to a stable "not less than" result); the normal
+-- sort is untouched. No-op if Inventory Open Lag Reducer isn't installed.
+local orig_sort_by_kind_factory = seax_sortingplus_opt_sort_by_kind and seax_sortingplus_opt_sort_by_kind.sort_by_kind_factory
+
+if orig_sort_by_kind_factory then
+	function seax_sortingplus_opt_sort_by_kind.sort_by_kind_factory(t)
+		local sort_fn, find_free_cell_fn = orig_sort_by_kind_factory(t)
+		if not sort_fn then
+			return sort_fn, find_free_cell_fn
+		end
+
+		local function guarded_sort_fn(tbl, a, b)
+			local ok, result = pcall(sort_fn, tbl, a, b)
+			if ok then
+				return result
+			end
+			log("sort_by_kind guard: comparator errored, falling back to a stable result: " .. tostring(result))
+			return false
+		end
+
+		return guarded_sort_fn, find_free_cell_fn
+	end
+	patched_sort_by_kind_guard = true
+end
+
+-- Weapon Parts Overhaul always spawns stripped parts into db.actor via
+-- remove_part, even when the weapon lives on a corpse/crate. Patched at
+-- parse time (same chaining rules as OnKeyboard above) so we compose with
+-- other late WPO wrappers such as arti_jamming_repairs_snd.
+local wpo = zzzz_arti_jamming_repairs
+local orig_act_fieldstrip = wpo and wpo.act_fieldstrip
+local orig_remove_part = wpo and wpo.remove_part
+
+local function fieldstrip_part_owner()
+	if not strip_weapon_id then
+		return nil
+	end
+	local wpn = level.object_by_id(strip_weapon_id)
+	if not (wpn and wpn.parent) then
+		return nil
+	end
+	return wpn:parent()
+end
+
+if orig_act_fieldstrip and orig_remove_part then
+	function wpo.act_fieldstrip(id, part_name)
+		strip_weapon_id = id
+		local ok, err = pcall(orig_act_fieldstrip, id, part_name)
+		strip_weapon_id = nil
+		if not ok then
+			error(err)
+		end
+	end
+
+	function wpo.remove_part(part_name, part_con)
+		if not CONFIG.keep_parts_with_weapon then
+			return orig_remove_part(part_name, part_con)
+		end
+
+		local owner = fieldstrip_part_owner()
+		if not owner then
+			return orig_remove_part(part_name, part_con)
+		end
+
+		if part_con[part_name] and part_con[part_name] ~= -1 then
+			local part_to_spawn = alife_create(
+				part_name,
+				owner:position(),
+				owner:level_vertex_id(),
+				owner:game_vertex_id(),
+				owner:id(),
+				false
+			)
+			local data = utils_stpk.get_item_data(part_to_spawn)
+			data.condition = part_con[part_name] / 100
+			utils_stpk.set_item_data(data, part_to_spawn)
+			alife():register(part_to_spawn)
+			part_con[part_name] = -1
+			log(string.format(
+				"remove_part: %s spawned into owner id=%s (weapon id=%s)",
+				tostring(part_name), tostring(owner:id()), tostring(strip_weapon_id)
+			))
+		end
+	end
+	patched_wpo_parts_inventory = true
+end
+
 function on_game_start()
 	DORN = _G[DORN_COMMON_VERSION].load(MOD_ID)
 
 	RegisterScriptCallback("on_option_change", on_option_change)
+	RegisterScriptCallback("actor_on_item_take", actor_on_item_take_cb)
+	RegisterScriptCallback("npc_on_item_take", npc_on_item_take_cb)
+
+	on_option_change()
 
 	log(string.format(
-		"on_game_start: loaded, OnKeyboard patched=%s, Update patched=%s",
-		tostring(patched_on_keyboard), tostring(patched_on_update)
+		"on_game_start: loaded, OnKeyboard patched=%s, Update patched=%s, func_disassembly patched=%s, sort_by_kind guard patched=%s, wpo_parts_inventory patched=%s",
+		tostring(patched_on_keyboard), tostring(patched_on_update), tostring(patched_func_disassembly),
+		tostring(patched_sort_by_kind_guard), tostring(patched_wpo_parts_inventory)
 	))
 end
