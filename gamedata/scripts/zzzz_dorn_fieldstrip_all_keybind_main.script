@@ -67,16 +67,17 @@ end
 -- boot status here too - this is the first point a gated log is guaranteed
 -- to actually show up once debug logging is on.
 local function on_option_change()
+	local tostr = tostring
 	CONFIG.key = DORN.mcm.key(MOD_ID, "main/key")
 	CONFIG.intercept_disassemble = DORN.mcm.bool(MOD_ID, "main/intercept_disassemble", true)
 	CONFIG.keep_parts_with_weapon = DORN.mcm.bool(MOD_ID, "main/keep_parts_with_weapon", true)
 	CONFIG.debug_log = DORN.mcm.bool(MOD_ID, "development/debug_log", false)
 	log(string.format(
 		"on_option_change: key=%s intercept_disassemble=%s keep_parts_with_weapon=%s debug_log=%s onkeyboard_patched=%s onupdate_patched=%s func_disassembly_patched=%s sort_guard_patched=%s wpo_parts_inventory_patched=%s",
-		tostring(CONFIG.key), tostring(CONFIG.intercept_disassemble), tostring(CONFIG.keep_parts_with_weapon),
-		tostring(CONFIG.debug_log),
-		tostring(patched_on_keyboard), tostring(patched_on_update), tostring(patched_func_disassembly),
-		tostring(patched_sort_by_kind_guard), tostring(patched_wpo_parts_inventory)
+		tostr(CONFIG.key), tostr(CONFIG.intercept_disassemble), tostr(CONFIG.keep_parts_with_weapon),
+		tostr(CONFIG.debug_log),
+		tostr(patched_on_keyboard), tostr(patched_on_update), tostr(patched_func_disassembly),
+		tostr(patched_sort_by_kind_guard), tostr(patched_wpo_parts_inventory)
 	))
 end
 
