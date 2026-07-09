@@ -46,8 +46,6 @@ local BURST_STEP_FRAMES = 2
 local RECONCILE_MAX_FRAMES = 30
 local burst_active = false
 local burst_obj_id = nil
-local burst_bag = nil
-local burst_idx = nil
 local burst_frames_left = 0
 local burst_waiting_reconcile = false
 local burst_reconcile_owner_id = nil
@@ -579,8 +577,6 @@ local function burst_tick()
 		log(string.format("burst complete/stop: last tracked id=%s", tostring(burst_obj_id)))
 		burst_active = false
 		burst_obj_id = nil
-		burst_bag = nil
-		burst_idx = nil
 		clear_burst_reconcile()
 		return
 	end
@@ -602,8 +598,6 @@ local function start_burst(obj, bag, idx)
 	end
 	burst_active = true
 	burst_obj_id = obj:id()
-	burst_bag = bag
-	burst_idx = idx
 	burst_frames_left = 0 -- first step runs on the very next Update() tick
 end
 

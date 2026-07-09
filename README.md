@@ -1,6 +1,6 @@
 # Dorn's Fieldstrip All Keybind
 
-For **S.T.A.L.K.E.R. G.A.M.M.A.** — an MCM keybind that field-strips a weapon in one press (scope, supressor, grenade launcher, and gun parts), or makes your first disassemble attempt do the same - (meaning you only actually disassemble weapons once they are fully stripped).
+For **S.T.A.L.K.E.R. G.A.M.M.A.** — an MCM keybind that field-strips a weapon in one press (scope, suppressor, grenade launcher, and gun parts), or makes your first disassemble attempt do the same - (meaning you only actually disassemble weapons once they are fully stripped).
 
 ## Demo
 
