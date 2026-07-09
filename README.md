@@ -4,7 +4,7 @@ For **S.T.A.L.K.E.R. G.A.M.M.A.** — an MCM keybind that field-strips a weapon 
 
 ## Demo
 
-https://github.com/JoshuaCarter/GAMMA-Field-Strip-All-Keybind/raw/main/stripper.mp4
+https://github.com/user-attachments/assets/9e69cbf8-19ea-4916-90d1-7bceba98edae
 
 ## Installation
 
