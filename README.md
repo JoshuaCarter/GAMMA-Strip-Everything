@@ -26,3 +26,4 @@ https://github.com/user-attachments/assets/9e69cbf8-19ea-4916-90d1-7bceba98edae
 - https://github.com/JoshuaCarter/GAMMA-Prone-Fix
 - https://github.com/JoshuaCarter/GAMMA-Radiation-Grain-Fix
 - https://github.com/JoshuaCarter/GAMMA-Tooltip-Weapon-Damage
+- https://github.com/JoshuaCarter/GAMMA-Pose-Controls
