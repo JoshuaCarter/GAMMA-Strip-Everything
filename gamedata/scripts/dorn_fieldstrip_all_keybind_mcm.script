@@ -34,6 +34,13 @@ function on_mcm_load()
 						def = true,
 						hint = "dorn_fieldstrip_all_keybind_keep_parts_with_weapon",
 					},
+					{
+						id = "pda_stash_on_disassemble",
+						type = "check",
+						val = 1,
+						def = true,
+						hint = "dorn_fieldstrip_all_keybind_pda_stash_on_disassemble",
+					},
 				},
 			},
 			{

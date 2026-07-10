@@ -1,5 +1,5 @@
 --[[
-	Dorn's Fieldstrip All Keybind
+	Dorn's Strip Everything
 
 	MCM keybind that field-strips whatever weapon your cursor is over in an
 	inventory list - your own gear or a corpse/crate you're looting. One
@@ -12,6 +12,10 @@
 	  4. Field strip -> Remove all (all internal weapon parts tracked by
 	     the Weapon Parts Overhaul mod - trigger group, bolt, etc,
 	     excluding the barrel - one call removes everything remaining)
+
+	Optional: intercept disassembly to field-strip first; spawn stripped
+	parts into the weapon owner's inventory; grant PDA stash coords on
+	disassembly of NPC PDAs (locked or unlocked).
 ]]
 
 local MOD_ID = "dorn_fieldstrip_all_keybind"
@@ -23,6 +27,7 @@ local CONFIG = {
 	key = nil,
 	intercept_disassemble = true,
 	keep_parts_with_weapon = true,
+	pda_stash_on_disassemble = true,
 	debug_log = false,
 }
 
@@ -31,6 +36,7 @@ local CONFIG = {
 local patched_on_keyboard = false
 local patched_on_update = false
 local patched_func_disassembly = false
+local patched_disassembly_item = false
 local patched_sort_by_kind_guard = false
 local patched_wpo_parts_inventory = false
 
@@ -71,10 +77,12 @@ local function on_option_change()
 	CONFIG.key = DORN.mcm.key(MOD_ID, "main/key")
 	CONFIG.intercept_disassemble = DORN.mcm.bool(MOD_ID, "main/intercept_disassemble", true)
 	CONFIG.keep_parts_with_weapon = DORN.mcm.bool(MOD_ID, "main/keep_parts_with_weapon", true)
+	CONFIG.pda_stash_on_disassemble = DORN.mcm.bool(MOD_ID, "main/pda_stash_on_disassemble", true)
 	CONFIG.debug_log = DORN.mcm.bool(MOD_ID, "development/debug_log", false)
 	log(string.format(
-		"on_option_change: key=%s intercept_disassemble=%s keep_parts_with_weapon=%s debug_log=%s onkeyboard_patched=%s onupdate_patched=%s func_disassembly_patched=%s sort_guard_patched=%s wpo_parts_inventory_patched=%s",
+		"on_option_change: key=%s intercept_disassemble=%s keep_parts_with_weapon=%s pda_stash_on_disassemble=%s debug_log=%s onkeyboard_patched=%s onupdate_patched=%s func_disassembly_patched=%s sort_guard_patched=%s wpo_parts_inventory_patched=%s",
 		tostr(CONFIG.key), tostr(CONFIG.intercept_disassemble), tostr(CONFIG.keep_parts_with_weapon),
+		tostr(CONFIG.pda_stash_on_disassemble),
 		tostr(CONFIG.debug_log),
 		tostr(patched_on_keyboard), tostr(patched_on_update), tostr(patched_func_disassembly),
 		tostr(patched_sort_by_kind_guard), tostr(patched_wpo_parts_inventory)
@@ -198,18 +206,6 @@ local function snapshot_owner_weapons(owner)
 	return weapons
 end
 
-local function format_weapon_list(weapons)
-	local entries = {}
-	for id, section in pairs(weapons) do
-		entries[#entries + 1] = string.format("%s(id=%s)", tostring(section), tostring(id))
-	end
-	table.sort(entries)
-	if #entries == 0 then
-		return "(none)"
-	end
-	return table.concat(entries, ", ")
-end
-
 local function owner_label(owner)
 	if not owner then
 		return "nil"
@@ -222,12 +218,18 @@ local function owner_label(owner)
 end
 
 local function log_weapon_inventory_state(owner, weapons, label)
+	local entries = {}
+	for id, section in pairs(weapons) do
+		entries[#entries + 1] = string.format("%s(id=%s)", tostring(section), tostring(id))
+	end
+	table.sort(entries)
+	local weapon_list = #entries == 0 and "(none)" or table.concat(entries, ", ")
 	log(string.format(
 		"inv %s: owner=%s weapon_count=%s [%s]",
 		label,
 		owner_label(owner),
 		tostring(weapon_count(weapons)),
-		format_weapon_list(weapons)
+		weapon_list
 	))
 end
 
@@ -388,27 +390,6 @@ local function try_adopt_new_weapon_id(owner, before_weapons, prev_id, context, 
 	return false
 end
 
-local function begin_burst_reconcile(owner, before_weapons, prev_id, detach_kind)
-	burst_waiting_reconcile = true
-	burst_reconcile_owner_id = owner:id()
-	burst_reconcile_before_ids = before_weapons
-	burst_reconcile_frames_left = RECONCILE_MAX_FRAMES
-	burst_pending_detach_kind = detach_kind
-	log(string.format(
-		"burst step: reconcile pending after step (prev_id=%s, owner=%s, detach=%s, frames=%s)",
-		tostring(prev_id), owner_label(owner), tostring(detach_kind), tostring(RECONCILE_MAX_FRAMES)
-	))
-	log_weapon_inventory_state(owner, before_weapons, "reconcile armed snapshot")
-end
-
-local function reconcile_burst_after_step(owner, before_weapons, prev_id, detach_kind)
-	if try_adopt_new_weapon_id(owner, before_weapons, prev_id, "post-step", detach_kind) then
-		clear_burst_reconcile()
-		return
-	end
-	begin_burst_reconcile(owner, before_weapons, prev_id, detach_kind)
-end
-
 local function reconcile_burst_tick()
 	if not burst_waiting_reconcile then
 		return
@@ -482,21 +463,28 @@ local function on_burst_owner_item_take(owner, item)
 	))
 end
 
-local function actor_on_item_take_cb(item)
-	on_burst_owner_item_take(db.actor, item)
-end
-
-local function npc_on_item_take_cb(npc, item)
-	on_burst_owner_item_take(npc, item)
-end
-
 local function perform_burst_action(owner, prev_id, before_weapons, action_fn, detach_kind)
 	log_weapon_inventory_state(owner, before_weapons, "step before action")
 	local ok, err = pcall(action_fn)
 	if not ok then
 		log("perform_burst_action: action errored: " .. tostring(err))
 	end
-	reconcile_burst_after_step(owner, before_weapons, prev_id, detach_kind)
+
+	-- reconcile weapon id after detach/fieldstrip step
+	if try_adopt_new_weapon_id(owner, before_weapons, prev_id, "post-step", detach_kind) then
+		clear_burst_reconcile()
+		return
+	end
+	burst_waiting_reconcile = true
+	burst_reconcile_owner_id = owner:id()
+	burst_reconcile_before_ids = before_weapons
+	burst_reconcile_frames_left = RECONCILE_MAX_FRAMES
+	burst_pending_detach_kind = detach_kind
+	log(string.format(
+		"burst step: reconcile pending after step (prev_id=%s, owner=%s, detach=%s, frames=%s)",
+		tostring(prev_id), owner_label(owner), tostring(detach_kind), tostring(RECONCILE_MAX_FRAMES)
+	))
+	log_weapon_inventory_state(owner, before_weapons, "reconcile armed snapshot")
 end
 
 -- Does exactly ONE removal step (see file header for why) and returns true
@@ -647,6 +635,96 @@ local function weapon_fully_stripped(obj)
 	return true
 end
 
+local function is_npc_pda_obj(obj)
+	if not obj then
+		return false
+	end
+	local sec = obj:section()
+	return item_device and item_device.device_npc_pda and item_device.device_npc_pda[sec]
+end
+
+local disassembly_item_wrapper = nil
+
+local function make_disassembly_item_wrapper(orig)
+	return function(obj, obj_d)
+		local extra_wear = nil
+		if CONFIG.pda_stash_on_disassemble and is_npc_pda_obj(obj) and obj_d then
+			local itms_disassemble = GetItemList("disassemble")
+			extra_wear = itms_disassemble and itms_disassemble[obj_d:section()]
+		end
+
+		orig(obj, obj_d)
+
+		if extra_wear and extra_wear > 0 and obj_d then
+			utils_item.degrade(obj_d, extra_wear)
+			log(string.format(
+				"pda disassemble: doubled tool wear on %s (+%s)",
+				obj_d:section(), tostring(extra_wear)
+			))
+		end
+	end
+end
+
+local function reapply_disassembly_item_patch()
+	if not (item_parts and item_parts.disassembly_item) then
+		return
+	end
+	if item_parts.disassembly_item == disassembly_item_wrapper then
+		return
+	end
+	disassembly_item_wrapper = make_disassembly_item_wrapper(item_parts.disassembly_item)
+	item_parts.disassembly_item = disassembly_item_wrapper
+	patched_disassembly_item = true
+	log("reapplied disassembly_item patch")
+end
+
+local function try_grant_pda_stash_on_disassemble(obj)
+	if not (CONFIG.pda_stash_on_disassemble and obj) then
+		return false
+	end
+	if not is_npc_pda_obj(obj) then
+		return false
+	end
+
+	local sec = obj:section()
+	local id = obj:id()
+	local info = se_load_var(id, obj:name(), "info")
+	if not info then
+		info = se_load_var(id, nil, "info")
+	end
+	if not info then
+		log(string.format("pda disassemble: no info on %s id=%s", sec, tostring(id)))
+		return false
+	end
+
+	local msgs = info.msg
+	if not msgs then
+		log(string.format("pda disassemble: no messages on %s id=%s state=%s", sec, tostring(obj:id()), tostring(info.state)))
+		return false
+	end
+
+	local granted = false
+	-- Stash data lives on whichever msg entry has msg.stash (not always index 1).
+	for i = 1, #msgs do
+		local msg = msgs[i]
+		local stash_id = msg.stash
+		if stash_id and not msg.stash_read
+			and level.map_has_object_spot(stash_id, "treasure") == 0
+			and level.map_has_object_spot(stash_id, "treasure_searched") == 0 then
+			if treasure_manager and treasure_manager.set_random_stash then
+				treasure_manager.set_random_stash(nil, nil, nil, stash_id)
+			end
+
+			log(string.format(
+				"pda disassemble: granted stash id=%s from %s state=%s (message %s/%s)",
+				tostring(stash_id), sec, tostring(info.state), tostring(i), tostring(#msgs)
+			))
+			granted = true
+		end
+	end
+	return granted
+end
+
 -- Patched at parse time so it chains correctly with any other mod wrapping
 -- the same method, no matter what order on_game_start callbacks run in.
 -- Logs every single invocation (dik/action/mode) so a filtered log file
@@ -689,10 +767,25 @@ end
 -- of a weapon that isn't fully stripped yet and redirects it into the same
 -- burst instead. Gated by CONFIG.intercept_disassemble, checked at call
 -- time so the MCM toggle takes effect immediately without re-patching.
-local original_func_disassembly = item_parts and item_parts.func_disassembly
+local disassembly_wrapper = nil
 
-if original_func_disassembly then
-	function item_parts.func_disassembly(obj, obj_d)
+local function make_disassembly_wrapper(orig)
+	return function(obj, obj_d)
+		if CONFIG.pda_stash_on_disassemble and is_npc_pda_obj(obj) then
+			try_grant_pda_stash_on_disassemble(obj)
+			-- DIT's disassembly_warning needs a second press unless d_flag is held.
+			-- zzz_dit.d_flag is local in zzz_dit.script, so disassemble NPC PDAs directly.
+			if obj and item_parts and item_parts.disassembly_item then
+				if not obj_d and item_parts.get_suitable_dtool then
+					obj_d = item_parts.get_suitable_dtool(obj)
+				end
+				if obj_d then
+					item_parts.disassembly_item(obj, obj_d)
+					return
+				end
+			end
+		end
+
 		if CONFIG.intercept_disassemble and obj and IsWeapon(obj) and not weapon_fully_stripped(obj) then
 			log(string.format("%s: disassemble intercepted, field-stripping instead of disassembling", obj:section()))
 			local gui = ui_inventory and ui_inventory.GUI
@@ -702,9 +795,29 @@ if original_func_disassembly then
 			return
 		end
 
-		return original_func_disassembly(obj, obj_d)
+		return orig(obj, obj_d)
 	end
+end
+
+local function reapply_disassembly_patch()
+	if not (item_parts and item_parts.func_disassembly) then
+		return
+	end
+	if item_parts.func_disassembly == disassembly_wrapper then
+		return
+	end
+	disassembly_wrapper = make_disassembly_wrapper(item_parts.func_disassembly)
+	item_parts.func_disassembly = disassembly_wrapper
 	patched_func_disassembly = true
+	log("reapplied func_disassembly patch")
+end
+
+if item_parts and item_parts.func_disassembly then
+	reapply_disassembly_patch()
+end
+
+if item_parts and item_parts.disassembly_item then
+	reapply_disassembly_item_patch()
 end
 
 -- Best-effort crash guard, see file header. Only touches behavior on the
@@ -741,17 +854,6 @@ local wpo = zzzz_arti_jamming_repairs
 local orig_act_fieldstrip = wpo and wpo.act_fieldstrip
 local orig_remove_part = wpo and wpo.remove_part
 
-local function fieldstrip_part_owner()
-	if not strip_weapon_id then
-		return nil
-	end
-	local wpn = level.object_by_id(strip_weapon_id)
-	if not (wpn and wpn.parent) then
-		return nil
-	end
-	return wpn:parent()
-end
-
 if orig_act_fieldstrip and orig_remove_part then
 	function wpo.act_fieldstrip(id, part_name)
 		strip_weapon_id = id
@@ -767,7 +869,13 @@ if orig_act_fieldstrip and orig_remove_part then
 			return orig_remove_part(part_name, part_con)
 		end
 
-		local owner = fieldstrip_part_owner()
+		local owner = nil
+		if strip_weapon_id then
+			local wpn = level.object_by_id(strip_weapon_id)
+			if wpn and wpn.parent then
+				owner = wpn:parent()
+			end
+		end
 		if not owner then
 			return orig_remove_part(part_name, part_con)
 		end
@@ -799,14 +907,24 @@ function on_game_start()
 	DORN = _G[DORN_COMMON_VERSION].load(MOD_ID)
 
 	RegisterScriptCallback("on_option_change", on_option_change)
-	RegisterScriptCallback("actor_on_item_take", actor_on_item_take_cb)
-	RegisterScriptCallback("npc_on_item_take", npc_on_item_take_cb)
+	RegisterScriptCallback("actor_on_item_take", function(item)
+		on_burst_owner_item_take(db.actor, item)
+	end)
+	RegisterScriptCallback("npc_on_item_take", function(npc, item)
+		on_burst_owner_item_take(npc, item)
+	end)
+	RegisterScriptCallback("actor_on_first_update", function()
+		reapply_disassembly_patch()
+		reapply_disassembly_item_patch()
+	end)
 
 	on_option_change()
+	reapply_disassembly_patch()
+	reapply_disassembly_item_patch()
 
 	log(string.format(
-		"on_game_start: loaded, OnKeyboard patched=%s, Update patched=%s, func_disassembly patched=%s, sort_by_kind guard patched=%s, wpo_parts_inventory patched=%s",
+		"on_game_start: loaded, OnKeyboard patched=%s, Update patched=%s, func_disassembly patched=%s, disassembly_item patched=%s, sort_by_kind guard patched=%s, wpo_parts_inventory patched=%s",
 		tostring(patched_on_keyboard), tostring(patched_on_update), tostring(patched_func_disassembly),
-		tostring(patched_sort_by_kind_guard), tostring(patched_wpo_parts_inventory)
+		tostring(patched_disassembly_item), tostring(patched_sort_by_kind_guard), tostring(patched_wpo_parts_inventory)
 	))
 end

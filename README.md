@@ -1,6 +1,10 @@
-# Dorn's Fieldstrip All Keybind v0.1.2
+# Dorn's Strip Everything v0.1.2
 
-For **S.T.A.L.K.E.R. G.A.M.M.A.** — an MCM keybind that field-strips a weapon in one press (scope, suppressor, grenade launcher, and gun parts), or makes your first disassemble attempt do the same - (meaning you only actually disassemble weapons once they are fully stripped).
+For **S.T.A.L.K.E.R. G.A.M.M.A.** — an MCM keybind that strips everything in one keypress.
+
+- (Optional) Assign key to strip everything off a weapon in a single press (scope, suppressor, grenade launcher, and gun parts except barrel).
+- (Optional) Use your disassemble key to strip everything on the first press (same as above), and disassemble on the second press.
+- (Optional) Strip stash coords off PDAs when disasembling them and doubles the tool wear (for balance). Also adds a red lock icon to encrypted PDAs so you can easily tell which PDAs you may wish to disassemble.
 
 ## Demo
 

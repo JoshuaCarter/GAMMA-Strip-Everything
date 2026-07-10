@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="windows-1251"?>
 <string_table>
 	<string id="ui_mcm_menu_dorn_fieldstrip_all_keybind">
-		<text>Dorn's Fieldstrip All Keybind</text>
+		<text>Dorn's Strip Everything</text>
 	</string>
 	<string id="ui_mcm_dorn_fieldstrip_all_keybind_main_section">
 		<text>Main</text>
@@ -23,6 +23,12 @@
 	</string>
 	<string id="ui_mcm_dorn_fieldstrip_all_keybind_keep_parts_with_weapon_desc">
 		<text>When field-stripping, spawn removed Weapon Parts Overhaul parts into the same inventory as the weapon (your own gear, a corpse, a crate, etc.) instead of always dumping them into your inventory. Turn off to restore vanilla Weapon Parts Overhaul behavior.</text>
+	</string>
+	<string id="ui_mcm_dorn_fieldstrip_all_keybind_pda_stash_on_disassemble">
+		<text>Get stash coords on PDA disassembly</text>
+	</string>
+	<string id="ui_mcm_dorn_fieldstrip_all_keybind_pda_stash_on_disassemble_desc">
+		<text>When disassembling an NPC PDA (locked or unlocked), read any unread stash messages stored on it and grant the coordinates if you do not already have them. Uses the normal stash-received notification. Doubles disassembly tool wear. Skips the disassembly confirmation prompt for PDAs. Turn off for normal PDA disassembly with no extra tool wear and no stash extraction.</text>
 	</string>
 	<string id="ui_mcm_dorn_fieldstrip_all_keybind_development_section">
 		<text>Development</text>
