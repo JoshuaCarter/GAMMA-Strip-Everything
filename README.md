@@ -1,6 +1,6 @@
 # Dorn's Strip Everything v0.1.2
 
-For **S.T.A.L.K.E.R. G.A.M.M.A.** — an MCM keybind that strips everything in one keypress.
+For **S.T.A.L.K.E.R. G.A.M.M.A.** — an MCM keybind that strips everything in one keypress (and more).
 
 - (Optional) Assign key to strip everything off a weapon in a single press (scope, suppressor, grenade launcher, and gun parts except barrel).
 - (Optional) Use your disassemble key to strip everything on the first press (same as above), and disassemble on the second press.
