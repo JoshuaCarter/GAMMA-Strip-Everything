@@ -1,4 +1,4 @@
-# Dorn's Strip Everything v0.1.2
+# Dorn's Strip Everything v0.1.3
 
 For **S.T.A.L.K.E.R. G.A.M.M.A.** — an MCM keybind that strips everything in one keypress (and more).
 
@@ -13,7 +13,7 @@ https://github.com/user-attachments/assets/9e69cbf8-19ea-4916-90d1-7bceba98edae
 
 ## Installation
 
-1. Download the latest release from https://github.com/JoshuaCarter/GAMMA-Field-Strip-All-Keybind/releases
+1. Download the latest release from https://github.com/JoshuaCarter/GAMMA-Strip-Everything/releases
 2. Install via MO2 like normal
 
 ## Other mods
