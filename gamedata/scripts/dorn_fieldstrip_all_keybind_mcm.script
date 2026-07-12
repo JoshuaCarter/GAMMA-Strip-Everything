@@ -1,5 +1,5 @@
 -- dorn_mcm_banner:begin (managed by sync-dorn-common.sh)
-local DORN_COMMON_VERSION = "dorn_common_35096fa5"
+local DORN_COMMON_VERSION = "dorn_common_c62f913d"
 local function dorn_mcm()
 	local hash = DORN_COMMON_VERSION:match("dorn_common_(.+)$")
 	return _G["dorn_mcm_" .. hash]
