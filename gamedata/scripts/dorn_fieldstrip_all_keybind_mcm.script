@@ -9,6 +9,7 @@ end
 
 
 
+
 function on_mcm_load()
 	local MCM = dorn_mcm()
 	return {
@@ -53,7 +54,7 @@ function on_mcm_load()
 						def = true,
 						hint = "dorn_fieldstrip_all_keybind_pda_stash_on_disassemble",
 					},
-				},
+				}),
 			},
 			{
 				id = "development",
@@ -67,7 +68,7 @@ function on_mcm_load()
 						def = false,
 						hint = "dorn_fieldstrip_all_keybind_debug_log",
 					},
-				},
+				}),
 			},
 		},
 	}
