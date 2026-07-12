@@ -8,7 +8,7 @@
 ]]
 
 local MOD_ID = "dorn_fieldstrip_all_keybind"
-local DORN_COMMON_VERSION = "dorn_common_f575cc9b" -- managed by sync-dorn-common.sh, do not hand-edit
+local DORN_COMMON_VERSION = "dorn_common_4e31ef38" -- managed by sync-dorn-common.sh, do not hand-edit
 
 local DORN
 local pda_stash_on_disassemble = true
