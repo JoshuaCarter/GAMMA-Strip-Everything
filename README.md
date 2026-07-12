@@ -16,15 +16,5 @@ https://github.com/user-attachments/assets/9e69cbf8-19ea-4916-90d1-7bceba98edae
 1. Download the latest release from https://github.com/JoshuaCarter/GAMMA-Strip-Everything/releases
 2. Install via MO2 like normal
 
-## Other mods
-
-- https://github.com/JoshuaCarter/GAMMA-Dont-ReEquip-PDA
-- https://github.com/JoshuaCarter/GAMMA-Faster-Skinning
-- https://github.com/JoshuaCarter/GAMMA-FPS-Counter
-- https://github.com/JoshuaCarter/GAMMA-Giant-Jump
-- https://github.com/JoshuaCarter/GAMMA-Optimal-Tool-Use
-- https://github.com/JoshuaCarter/GAMMA-Pose-Controls
-- https://github.com/JoshuaCarter/GAMMA-Prone-Fix
-- https://github.com/JoshuaCarter/GAMMA-Radiation-Grain-Fix
-- https://github.com/JoshuaCarter/GAMMA-Strip-Everything
-- https://github.com/JoshuaCarter/GAMMA-Tooltip-Weapon-Damage
+## See my other mods here:
+https://github.com/JoshuaCarter/GAMMA-Mods
