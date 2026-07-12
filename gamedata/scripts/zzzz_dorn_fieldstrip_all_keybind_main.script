@@ -19,7 +19,7 @@
 ]]
 
 local MOD_ID = "dorn_fieldstrip_all_keybind"
-local DORN_COMMON_VERSION = "dorn_common_328e2e4d" -- managed by sync-dorn-common.sh, do not hand-edit
+local DORN_COMMON_VERSION = "dorn_common_35096fa5" -- managed by sync-dorn-common.sh, do not hand-edit
 
 local DORN
 
@@ -39,6 +39,7 @@ local patched_func_disassembly = false
 local patched_disassembly_item = false
 local patched_sort_by_kind_guard = false
 local patched_wpo_parts_inventory = false
+local patched_wpo_act_fieldstrip = false
 
 -- Set while zzzz_arti_jamming_repairs.act_fieldstrip runs so remove_part
 -- knows which weapon is being stripped.
@@ -80,12 +81,12 @@ local function on_option_change()
 	CONFIG.pda_stash_on_disassemble = DORN.mcm.bool(MOD_ID, "main/pda_stash_on_disassemble", true)
 	CONFIG.debug_log = DORN.mcm.bool(MOD_ID, "development/debug_log", false)
 	log(string.format(
-		"on_option_change: key=%s intercept_disassemble=%s keep_parts_with_weapon=%s pda_stash_on_disassemble=%s debug_log=%s onkeyboard_patched=%s onupdate_patched=%s func_disassembly_patched=%s sort_guard_patched=%s wpo_parts_inventory_patched=%s",
+		"on_option_change: key=%s intercept_disassemble=%s keep_parts_with_weapon=%s pda_stash_on_disassemble=%s debug_log=%s onkeyboard_patched=%s onupdate_patched=%s func_disassembly_patched=%s sort_guard_patched=%s wpo_parts_inventory_patched=%s wpo_act_fieldstrip_patched=%s",
 		tostr(CONFIG.key), tostr(CONFIG.intercept_disassemble), tostr(CONFIG.keep_parts_with_weapon),
 		tostr(CONFIG.pda_stash_on_disassemble),
 		tostr(CONFIG.debug_log),
 		tostr(patched_on_keyboard), tostr(patched_on_update), tostr(patched_func_disassembly),
-		tostr(patched_sort_by_kind_guard), tostr(patched_wpo_parts_inventory)
+		tostr(patched_sort_by_kind_guard), tostr(patched_wpo_parts_inventory), tostr(patched_wpo_act_fieldstrip)
 	))
 end
 
@@ -847,23 +848,39 @@ if orig_sort_by_kind_factory then
 end
 
 -- Weapon Parts Overhaul always spawns stripped parts into db.actor via
--- remove_part, even when the weapon lives on a corpse/crate. Patched at
--- parse time (same chaining rules as OnKeyboard above) so we compose with
--- other late WPO wrappers such as arti_jamming_repairs_snd.
+-- remove_part, even when the weapon lives on a corpse/crate. remove_part
+-- is patched at parse time (must load before mods like Sota UI Rework that
+-- cache remove_part in a local). act_fieldstrip is re-wrapped at runtime
+-- because late loaders replace it without setting strip_weapon_id.
 local wpo = zzzz_arti_jamming_repairs
-local orig_act_fieldstrip = wpo and wpo.act_fieldstrip
 local orig_remove_part = wpo and wpo.remove_part
+local act_fieldstrip_wrapper = nil
 
-if orig_act_fieldstrip and orig_remove_part then
-	function wpo.act_fieldstrip(id, part_name)
+local function make_act_fieldstrip_wrapper(orig)
+	return function(id, part_name)
 		strip_weapon_id = id
-		local ok, err = pcall(orig_act_fieldstrip, id, part_name)
+		local ok, err = pcall(orig, id, part_name)
 		strip_weapon_id = nil
 		if not ok then
 			error(err)
 		end
 	end
+end
 
+local function reapply_act_fieldstrip_patch()
+	if not (wpo and wpo.act_fieldstrip) then
+		return
+	end
+	if wpo.act_fieldstrip == act_fieldstrip_wrapper then
+		return
+	end
+	act_fieldstrip_wrapper = make_act_fieldstrip_wrapper(wpo.act_fieldstrip)
+	wpo.act_fieldstrip = act_fieldstrip_wrapper
+	patched_wpo_act_fieldstrip = true
+	log("reapplied act_fieldstrip patch")
+end
+
+if orig_remove_part then
 	function wpo.remove_part(part_name, part_con)
 		if not CONFIG.keep_parts_with_weapon then
 			return orig_remove_part(part_name, part_con)
@@ -903,6 +920,8 @@ if orig_act_fieldstrip and orig_remove_part then
 	patched_wpo_parts_inventory = true
 end
 
+reapply_act_fieldstrip_patch()
+
 function on_game_start()
 	DORN = _G[DORN_COMMON_VERSION].load(MOD_ID)
 
@@ -916,15 +935,18 @@ function on_game_start()
 	RegisterScriptCallback("actor_on_first_update", function()
 		reapply_disassembly_patch()
 		reapply_disassembly_item_patch()
+		reapply_act_fieldstrip_patch()
 	end)
 
 	on_option_change()
 	reapply_disassembly_patch()
 	reapply_disassembly_item_patch()
+	reapply_act_fieldstrip_patch()
 
 	log(string.format(
-		"on_game_start: loaded, OnKeyboard patched=%s, Update patched=%s, func_disassembly patched=%s, disassembly_item patched=%s, sort_by_kind guard patched=%s, wpo_parts_inventory patched=%s",
+		"on_game_start: loaded, OnKeyboard patched=%s, Update patched=%s, func_disassembly patched=%s, disassembly_item patched=%s, sort_by_kind guard patched=%s, wpo_parts_inventory patched=%s, wpo_act_fieldstrip patched=%s",
 		tostring(patched_on_keyboard), tostring(patched_on_update), tostring(patched_func_disassembly),
-		tostring(patched_disassembly_item), tostring(patched_sort_by_kind_guard), tostring(patched_wpo_parts_inventory)
+		tostring(patched_disassembly_item), tostring(patched_sort_by_kind_guard), tostring(patched_wpo_parts_inventory),
+		tostring(patched_wpo_act_fieldstrip)
 	))
 end

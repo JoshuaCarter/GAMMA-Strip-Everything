@@ -17,4 +17,5 @@ https://github.com/user-attachments/assets/9e69cbf8-19ea-4916-90d1-7bceba98edae
 2. Install via MO2 like normal
 
 ## See my other mods here:
+
 https://github.com/JoshuaCarter/GAMMA-Mods
