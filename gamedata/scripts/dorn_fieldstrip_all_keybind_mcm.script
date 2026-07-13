@@ -9,7 +9,7 @@ end
 function on_mcm_load()
 	local MCM = dorn_mcm()
 	return {
-		id = "dorn_fieldstrip_all_keybind",
+		id = "dorn_strip_everything",
 		text = "ui_mcm_menu_dorn_fieldstrip_all_keybind",
 		gr = {
 			{
@@ -27,28 +27,40 @@ function on_mcm_load()
 						type = "key_bind",
 						val = 2,
 						def = -1,
-						hint = "dorn_fieldstrip_all_keybind_key",
+						hint = "dorn_strip_everything_key",
 					},
 					{
 						id = "intercept_disassemble",
 						type = "check",
 						val = 1,
 						def = true,
-						hint = "dorn_fieldstrip_all_keybind_intercept_disassemble",
+						hint = "dorn_strip_everything_intercept_disassemble",
 					},
 					{
 						id = "keep_parts_with_weapon",
 						type = "check",
 						val = 1,
 						def = true,
-						hint = "dorn_fieldstrip_all_keybind_keep_parts_with_weapon",
+						hint = "dorn_strip_everything_keep_parts_with_weapon",
 					},
 					{
 						id = "pda_stash_on_disassemble",
 						type = "check",
 						val = 1,
 						def = true,
-						hint = "dorn_fieldstrip_all_keybind_pda_stash_on_disassemble",
+						hint = "dorn_strip_everything_pda_stash_on_disassemble",
+					},
+					{
+						id = "companion_loot_description",
+						type = "desc",
+						text = "ui_mcm_dorn_strip_everything_companion_loot_description",
+					},
+					{
+						id = "block_companion_special_items",
+						type = "check",
+						val = 1,
+						def = true,
+						hint = "dorn_strip_everything_block_companion_special_items",
 					},
 				}),
 			},
@@ -62,7 +74,7 @@ function on_mcm_load()
 						type = "check",
 						val = 1,
 						def = false,
-						hint = "dorn_fieldstrip_all_keybind_debug_log",
+						hint = "dorn_strip_everything_debug_log",
 					},
 				}),
 			},

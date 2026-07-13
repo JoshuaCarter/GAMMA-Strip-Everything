@@ -7,7 +7,7 @@
 	removes the icon automatically.
 ]]
 
-local MOD_ID = "dorn_fieldstrip_all_keybind"
+local MOD_ID = "dorn_strip_everything"
 local DORN_COMMON_VERSION = "dorn_common_c62f913d" -- managed by sync-dorn-common.sh, do not hand-edit
 
 local DORN

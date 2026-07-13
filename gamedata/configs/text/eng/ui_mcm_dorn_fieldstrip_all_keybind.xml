@@ -9,34 +9,43 @@
 	<string id="ui_mcm_dorn_fieldstrip_all_keybind_main_description">
 		<text>Hold your cursor over a weapon in your inventory or a corpse/crate you're looting, and press the key once. It detaches scope, then silencer, then GL, then field-strips all Weapon Parts Overhaul parts (Field strip -> Remove all) - one step every couple of frames, same actions as right-clicking each entry by hand, just automatic. Leave the key unbound to disable. The option below can also trigger the same field-strip whenever you try to disassemble a weapon that isn't fully stripped yet.</text>
 	</string>
-	<string id="ui_mcm_dorn_fieldstrip_all_keybind_key">
+	<string id="ui_mcm_dorn_strip_everything_key">
 		<text>Field-strip key</text>
 	</string>
-	<string id="ui_mcm_dorn_fieldstrip_all_keybind_intercept_disassemble">
+	<string id="ui_mcm_dorn_strip_everything_intercept_disassemble">
 		<text>Field-strip instead of disassemble on non-stripped weapons</text>
 	</string>
-	<string id="ui_mcm_dorn_fieldstrip_all_keybind_intercept_disassemble_desc">
+	<string id="ui_mcm_dorn_strip_everything_intercept_disassemble_desc">
 		<text>If a weapon still has addons attached or Weapon Parts Overhaul parts left to remove, catch attempts to disassemble it (dragging a disassembly tool onto it, or a disassemble keybind like Drop_Disassemble_on_press) and field-strip it instead. Once it's fully stripped, disassembling it works as normal.</text>
 	</string>
-	<string id="ui_mcm_dorn_fieldstrip_all_keybind_keep_parts_with_weapon">
+	<string id="ui_mcm_dorn_strip_everything_keep_parts_with_weapon">
 		<text>Keep stripped parts in the weapon's inventory</text>
 	</string>
-	<string id="ui_mcm_dorn_fieldstrip_all_keybind_keep_parts_with_weapon_desc">
-		<text>When field-stripping, spawn removed Weapon Parts Overhaul parts into the same inventory as the weapon (your own gear, a corpse, a crate, etc.) instead of always dumping them into your inventory. Turn off to restore vanilla Weapon Parts Overhaul behavior.</text>
+	<string id="ui_mcm_dorn_strip_everything_keep_parts_with_weapon_desc">
+		<text>When looting a corpse, crate, or companion, field-strip uses vanilla spawn rules first (parts usually land in your inventory). After stripping finishes, move any new items from your inventory back to the weapon owner's inventory using the same transfer as shift-hover or double-click move in the loot UI. No effect when stripping your own weapons. Turn off to leave stripped parts in your inventory.</text>
 	</string>
-	<string id="ui_mcm_dorn_fieldstrip_all_keybind_pda_stash_on_disassemble">
+	<string id="ui_mcm_dorn_strip_everything_pda_stash_on_disassemble">
 		<text>Get stash coords on PDA disassembly</text>
 	</string>
-	<string id="ui_mcm_dorn_fieldstrip_all_keybind_pda_stash_on_disassemble_desc">
+	<string id="ui_mcm_dorn_strip_everything_pda_stash_on_disassemble_desc">
 		<text>When disassembling an NPC PDA (locked or unlocked), read any unread stash messages stored on it and grant the coordinates if you do not already have them. Uses the normal stash-received notification. Doubles disassembly tool wear. Skips the disassembly confirmation prompt for PDAs. Turn off for normal PDA disassembly with no extra tool wear and no stash extraction.</text>
+	</string>
+	<string id="ui_mcm_dorn_strip_everything_companion_loot_description">
+		<text>When looting a companion, moving equipped or belt items from your inventory into theirs (PDA, NVG, grenades, etc.) can make them vanish. Loose bag items still move normally.</text>
+	</string>
+	<string id="ui_mcm_dorn_strip_everything_block_companion_special_items">
+		<text>Block equipped items moving to companions</text>
+	</string>
+	<string id="ui_mcm_dorn_strip_everything_block_companion_special_items_desc">
+		<text>On by default. Stops double-click, drag, and shift-move of your equipped-slot, belt, and strapped weapons into a companion inventory.</text>
 	</string>
 	<string id="ui_mcm_dorn_fieldstrip_all_keybind_development_section">
 		<text>Development</text>
 	</string>
-	<string id="ui_mcm_dorn_fieldstrip_all_keybind_debug_log">
+	<string id="ui_mcm_dorn_strip_everything_debug_log">
 		<text>Enable debug logging</text>
 	</string>
-	<string id="ui_mcm_dorn_fieldstrip_all_keybind_debug_log_desc">
+	<string id="ui_mcm_dorn_strip_everything_debug_log_desc">
 		<text>Write field-strip actions (hovered weapon, addons removed, parts removed) to the game log file.</text>
 	</string>
 </string_table>
