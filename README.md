@@ -1,4 +1,4 @@
-# Dorn's Strip Everything v0.1.3
+# Dorn's Strip Everything v0.1.4
 
 For **S.T.A.L.K.E.R. G.A.M.M.A.** — an MCM keybind that strips everything in one keypress (and more).
 
