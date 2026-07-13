@@ -6,6 +6,7 @@ For **S.T.A.L.K.E.R. G.A.M.M.A.** — an MCM keybind that strips everything in o
 - (Optional) Use your disassemble key to strip everything on the first press (same as above), and disassemble on the second press.
 - (Optional) Keep stripped parts in the weapon's inventory (instead of auto looting them).
 - (Optional) Strip stash coords off PDAs when disasembling them and doubles the tool wear (for balance). Also adds a red lock icon to encrypted PDAs so you can easily tell which PDAs you may wish to disassemble.
+- (Optional) Prevent double-click transfer of equiped item to companions which results in the item disappearing.
 
 ## Demo
 
